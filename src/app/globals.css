@@ -1,49 +1,121 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Core Palette - Deep Slate & Neon */
+  --bg-primary: #0a0f12;
+  --bg-secondary: #0f171c;
+  --bg-card: rgba(21, 31, 38, 0.7);
+  
+  --accent-primary: #00f5ff; /* Cyan Neon */
+  --accent-secondary: #7000ff; /* Purple Neon */
+  --accent-tertiary: #ff00c8; /* Pink Neon */
+  
+  --text-primary: #f0f4f8;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  
+  --border-glow: rgba(0, 245, 255, 0.2);
+  --border-muted: rgba(255, 255, 255, 0.1);
+  
+  --glass-bg: rgba(15, 23, 28, 0.65);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  
+  /* Dimensions & Geometry */
+  --sidebar-width: 380px;
+  --header-height: 64px;
+  --radius-soft: 16px;
+  --radius-precise: 8px;
+  --radius-pill: 999px;
+  
+  /* Shadows */
+  --shadow-whisper: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-electric: 0 0 20px rgba(0, 245, 255, 0.15);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* Typography Scale */
+  --text-base: clamp(0.875rem, 1vw, 1rem);
+  --text-sm: clamp(0.75rem, 0.8vw, 0.875rem);
+  --text-h1: clamp(1.5rem, 4vw, 2.5rem);
+  --text-h2: clamp(1.25rem, 2vw, 1.75rem);
+  --text-h3: clamp(1rem, 1.5vw, 1.25rem);
+  
+  /* Animations */
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
   box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  padding: 0;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--text-base);
+  line-height: 1.6;
+  overflow: hidden; /* Canvas handles scrolling */
+  height: 100vh;
+  width: 100vw;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+code, pre, kbd, samp {
+  font-family: var(--font-mono), 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Typography */
+h1 { font-size: var(--text-h1); font-weight: 800; letter-spacing: -0.03em; }
+h2 { font-size: var(--text-h2); font-weight: 700; letter-spacing: -0.02em; }
+h3 { font-size: var(--text-h3); font-weight: 600; letter-spacing: -0.01em; }
+small { font-size: var(--text-sm); }
+
+/* Utility: Glassmorphism */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-soft);
+  box-shadow: var(--shadow-whisper);
+}
+
+/* Utility: Neon Glow */
+.glow-accent {
+  box-shadow: 0 0 20px var(--border-glow);
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-muted);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* Main Layout Grid */
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.main-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, #151f26 0%, #0a0f12 100%);
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  border-right: 1px solid var(--border-muted);
+  display: flex;
+  flex-direction: column;
+  z-index: 10;
 }
