@@ -26,7 +26,7 @@ class ParsedRequirements:
     throughput_rps: float
     latency_ms: float
     availability_pct: float
-    budget_usd: Optional[float]
+    budget_inr: Optional[float]
     storage_gib: float
     region: Optional[str]
     compliance: List[str] = field(default_factory=list)
@@ -46,6 +46,7 @@ class CandidateOption:
     supported_compliance: List[str]
     gpu_capable: bool
     estimated_monthly_cost: float
+    estimated_monthly_cost_inr: float
     estimated_latency_ms: float
     estimated_throughput_rps: float
     estimated_availability_pct: float
@@ -458,7 +459,8 @@ class DecisionMatrixGenerator:
         throughput_rps = _extract_first_number(r"(\d+(?:\.\d+)?)\s*(?:rps|req/s|requests per second)", text)
         latency_ms = _extract_first_number(r"(?:under|below|within|<|<=)?\s*(\d+(?:\.\d+)?)\s*ms", text)
         availability_pct = _extract_first_number(r"(\d+(?:\.\d+)?)\s*%\s*(?:availability|uptime)", text)
-        budget_usd = _extract_first_number(r"\$\s*(\d+(?:\.\d+)?)", text)
+        budget_inr = _extract_first_number(r"(?:₹|rs\.?|rupees|inr)\s*(\d+(?:\.\d+)?)", text)
+        budget_inr = budget_inr / 83.0 if budget_inr is not None else None
         storage_gib = _extract_first_number(r"(\d+(?:\.\d+)?)\s*(?:gib|gb|tb)\s*(?:storage|data|uploads|objects)?", text)
 
         if storage_gib is None:
@@ -524,7 +526,7 @@ class DecisionMatrixGenerator:
             throughput_rps=float(throughput_rps),
             latency_ms=float(latency_ms),
             availability_pct=float(availability_pct),
-            budget_usd=float(budget_usd) if budget_usd is not None else None,
+            budget_inr=float(budget_inr) if budget_inr is not None else None,
             storage_gib=float(storage_gib),
             region=region,
             compliance=compliance,
@@ -582,6 +584,7 @@ class DecisionMatrixGenerator:
             "supported_compliance": supported_compliance,
             "gpu_capable": bool(archetype_profile["gpu_capable"]),
             "estimated_monthly_cost": round(estimated_monthly_cost, 2),
+            "estimated_monthly_cost_inr": round(estimated_monthly_cost * 83, 2),
             "estimated_latency_ms": round(estimated_latency_ms, 1),
             "estimated_throughput_rps": round(throughput_capacity, 1),
             "estimated_availability_pct": round(estimated_availability_pct, 3),
@@ -606,8 +609,8 @@ class DecisionMatrixGenerator:
             return "Estimated latency exceeds the requested target."
         if profile["estimated_availability_pct"] < req.availability_pct:
             return "Estimated availability does not meet the requested target."
-        if req.budget_usd is not None and profile["estimated_monthly_cost"] > req.budget_usd:
-            return f"Estimated monthly cost exceeds the stated budget of ${req.budget_usd:.2f}."
+        if req.budget_inr is not None and profile["estimated_monthly_cost"] > req.budget_inr:
+            return f"Estimated monthly cost exceeds the stated budget of ₹{req.budget_inr * 83:.2f}."
         return None
 
     def _dimension_scores(self, profile: Dict[str, Any], req: ParsedRequirements) -> Dict[str, float]:
@@ -615,8 +618,11 @@ class DecisionMatrixGenerator:
         archetype_profile = profile["archetype_profile"]
 
         cost_score = 100.0
-        if req.budget_usd:
-            cost_score = _normalize_inverse(profile["estimated_monthly_cost"], 0.0, req.budget_usd * 1.6)
+        if req.budget_inr:
+            cost_score = _normalize_inverse(profile["estimated_monthly_cost"], 0.0, req.budget_inr * 1.6)
+            # Prioritize serverless for low budget (under $100 / ₹8300)
+            if req.budget_inr < 100.0 and archetype_profile.get("label") == "Serverless PaaS":
+                cost_score = _clamp(cost_score + 15.0)
 
         latency_score = _normalize_inverse(profile["estimated_latency_ms"], req.latency_ms * 0.55, req.latency_ms * 1.45)
         throughput_score = _normalize(profile["estimated_throughput_rps"], req.throughput_rps * 0.75, req.throughput_rps * 1.6)
@@ -658,8 +664,8 @@ class DecisionMatrixGenerator:
         if req.compliance:
             compliance_gap = max(0.0, len(set(req.compliance) - set(profile["supported_compliance"]))) / max(1.0, float(len(req.compliance)))
         budget_gap = 0.0
-        if req.budget_usd is not None:
-            budget_gap = max(0.0, profile["estimated_monthly_cost"] - req.budget_usd) / max(req.budget_usd, 1.0)
+        if req.budget_inr is not None:
+            budget_gap = max(0.0, profile["estimated_monthly_cost"] - req.budget_inr) / max(req.budget_inr, 1.0)
 
         penalty["latency"] = round(latency_gap * 18.0, 2)
         penalty["throughput"] = round(throughput_gap * 20.0, 2)
@@ -673,13 +679,13 @@ class DecisionMatrixGenerator:
 
     def _explain(self, option: CandidateOption, req: ParsedRequirements) -> List[str]:
         lines = [
-            f"{option.provider} {option.archetype} is estimated at ${option.estimated_monthly_cost:.2f}/month with {option.estimated_latency_ms:.1f}ms latency and {option.estimated_availability_pct:.3f}% availability.",
+            f"{option.provider} {option.archetype} is estimated at ₹{option.estimated_monthly_cost_inr:.2f}/month with {option.estimated_latency_ms:.1f}ms latency and {option.estimated_availability_pct:.3f}% availability.",
         ]
         best_dimension = max(option.dimension_scores.items(), key=lambda item: item[1])[0]
         weakest_dimension = min(option.dimension_scores.items(), key=lambda item: item[1])[0]
         lines.append(f"Its strongest dimension is {best_dimension}, while the main trade-off is {weakest_dimension}.")
-        if req.budget_usd is not None:
-            if option.estimated_monthly_cost <= req.budget_usd:
+        if req.budget_inr is not None:
+            if option.estimated_monthly_cost <= req.budget_inr:
                 lines.append("It stays within the stated budget.")
             else:
                 lines.append("It exceeds the stated budget, so cost pressure is a visible trade-off.")
@@ -818,6 +824,7 @@ class DecisionMatrixGenerator:
                     supported_compliance=profile["supported_compliance"],
                     gpu_capable=profile["gpu_capable"],
                     estimated_monthly_cost=profile["estimated_monthly_cost"],
+                    estimated_monthly_cost_inr=profile["estimated_monthly_cost_inr"],
                     estimated_latency_ms=profile["estimated_latency_ms"],
                     estimated_throughput_rps=profile["estimated_throughput_rps"],
                     estimated_availability_pct=profile["estimated_availability_pct"],
@@ -853,8 +860,8 @@ class DecisionMatrixGenerator:
             open_questions.append("Which region or country must the deployment run in?")
         if not req.compliance:
             open_questions.append("Do you need any compliance frameworks such as HIPAA, PCI DSS, or GDPR?")
-        if req.budget_usd is None:
-            open_questions.append("Is there a monthly budget ceiling I should treat as hard?")
+        if req.budget_inr is None:
+            open_questions.insert(0, "CRITICAL: Please provide a monthly budget ceiling in rupees to finalize a cost-effective recommendation.")
         if req.tech_stack is None:
             open_questions.append("Which stack, runtime, or existing platform must this recommendation preserve?")
 

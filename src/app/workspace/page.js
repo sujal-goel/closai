@@ -178,7 +178,7 @@ export default function Home() {
 
       setMessages(prev => [...prev, {
         role: 'model',
-        content: `✅ Native mapping complete for ${providerId.toUpperCase()}. Estimated cost: $${data.mapping?.total_estimated_monthly_cost_usd || 'N/A'}/mo`,
+        content: `✅ Native mapping complete for ${providerId.toUpperCase()}. Estimated cost: ₹${data.mapping?.total_estimated_monthly_cost_inr?.toFixed(2) || 'N/A'}/mo`,
         timestamp: new Date()
       }]);
     } catch (error) {

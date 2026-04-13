@@ -48,7 +48,7 @@ Mapping examples:
 For each node, provide:
 - native_service: The specific provider service name
 - sku: The recommended SKU/tier (e.g., "db.r6g.large")
-- estimated_monthly_cost_usd: Best estimate
+- estimated_monthly_cost_inr: Best estimate
 - estimated_latency_ms: Typical latency/processing time (number)
 - sla_percentage: Availability SLA (e.g., "99.99")
 - region_available: boolean
@@ -63,14 +63,14 @@ Return JSON:
       "generic_type": "api_gateway",
       "native_service": "Amazon API Gateway",
       "sku": "REST API",
-      "estimated_monthly_cost_usd": 35,
+      "estimated_monthly_cost_inr": 35,
       "estimated_latency_ms": 15,
       "sla_percentage": "99.95",
       "region_available": true,
       "notes": "Includes 1M API calls/month in free tier"
     }
   ],
-  "total_estimated_monthly_cost_usd": 1250,
+  "total_estimated_monthly_cost_inr": 1250,
   "validation_warnings": ["Some GPU instances may have limited availability in eu-west-1"]
 }
 """
@@ -222,7 +222,7 @@ async def map_to_native(req: NativeMappingRequest, current_user: dict = Depends(
             "createdAt": datetime.now(timezone.utc),
         })
 
-        total_cost = mapping.get("total_estimated_monthly_cost_usd")
+        total_cost = mapping.get("total_estimated_monthly_cost_inr")
 
         return NativeMappingResponse(
             native_blueprint_id=native_blueprint_id,
