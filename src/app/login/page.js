@@ -17,7 +17,7 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
       
       const formData = new URLSearchParams();
       formData.append('username', email);

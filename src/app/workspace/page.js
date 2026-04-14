@@ -6,7 +6,7 @@ import ChatSidebar from '@/components/ChatSidebar';
 import Canvas from '@/components/Canvas';
 import DecisionMatrix from '@/components/DecisionMatrix';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || '';
 
 export default function Home() {
   const [messages, setMessages] = useState([]);
