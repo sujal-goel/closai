@@ -6,7 +6,7 @@
         },
         "backend": {
             "entrypoint": "backend",
-            "routePrefix": "/api"
+            "routePrefix": "/_/backend"
         }
     }
 }
