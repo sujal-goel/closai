@@ -287,7 +287,7 @@ export default function LandingPage() {
           ].map(({ name, role, img, bio }) => (
             <div key={name} style={{ textAlign: 'center', padding: '48px 36px', background: 'rgba(20,24,46,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 24, transition: 'border-color 0.3s, transform 0.3s' }}>
               <div style={{ width: 88, height: 88, borderRadius: '50%', margin: '0 auto 24px', border: '2px solid rgba(161,250,255,0.25)', boxShadow: '0 0 20px rgba(161,250,255,0.15)', overflow: 'hidden', position: 'relative' }}>
-                <Image src={img} alt={name} fill sizes="88px" style={{ objectFit: 'cover' }} />
+                <Image src={img} alt={name} fill sizes="88px" priority={false} style={{ objectFit: 'cover' }} />
               </div>
               <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{name}</h3>
               <p style={{ color: '#a1faff', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>{role}</p>
