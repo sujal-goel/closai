@@ -7,22 +7,80 @@ import httpx
 import json
 import asyncio
 import logging
+import random
+import hashlib
 from config import get_settings
 
 logger = logging.getLogger(__name__)
 
 GEMINI_MODEL = "gemini-3-flash-preview"
+AI_SEMAPHORE = asyncio.Semaphore(2)  # Limit concurrent AI calls
+QUERY_CACHE = {}  # Simple in-memory cache
 
+
+def _get_cache_key(user_query: str, system_prompt: str, use_json: bool) -> str:
+    payload = f"{system_prompt}|{user_query}|{use_json}"
+    return hashlib.md5(payload.encode()).hexdigest()
+
+async def call_llm_with_retry(
+    user_query: str,
+    system_prompt: str,
+    use_json: bool = True,
+    max_retries: int = 5
+) -> dict | str:
+    """
+    Unified LLM caller with:
+    1. Local caching
+    2. Concurrent request throttling (Semaphore)
+    3. Randomized exponential backoff
+    4. Primary/Fallback provider logic
+    """
+    cache_key = _get_cache_key(user_query, system_prompt, use_json)
+    if cache_key in QUERY_CACHE:
+        logger.info("Serving LLM response from local cache.")
+        return QUERY_CACHE[cache_key]
+
+    settings = get_settings()
+    
+    async with AI_SEMAPHORE:
+        for attempt in range(max_retries):
+            # Decide provider
+            provider = "gemini" if attempt < (max_retries // 2) else "groq"
+            if provider == "groq" and not settings.has_groq:
+                provider = "gemini" # Fallback back to gemini if groq not config
+
+            try:
+                if provider == "gemini":
+                    result = await _execute_gemini_request(user_query, system_prompt, use_json)
+                else:
+                    result = await _call_groq_internal(user_query, system_prompt, use_json)
+                
+                # Success! Cache and return
+                QUERY_CACHE[cache_key] = result
+                return result
+
+            except Exception as e:
+                is_rate_limit = "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e)
+                
+                if attempt == max_retries - 1:
+                    logger.error(f"Final attempt failed: {e}")
+                    raise
+
+                # Calculate wait time: 2, 4, 8, 16... with jitter
+                wait_time = (2 ** attempt) + (random.random() * 2)
+                if is_rate_limit:
+                    wait_time += 10 # Extra penalty for rate limits
+                    logger.warning(f"Rate limit hit ({provider}). Waiting {wait_time:.1f}s (Attempt {attempt+1}/{max_retries})")
+                else:
+                    logger.warning(f"LLM Error ({provider}): {e}. Retrying in {wait_time:.1f}s...")
+                
+                await asyncio.sleep(wait_time)
 
 async def _execute_gemini_request(
     user_query: str,
     system_prompt: str,
     use_json: bool = True,
-    max_retries: int = 5,
 ) -> dict | str:
-    """
-    Execute Gemini API internal request with exponential backoff.
-    """
     settings = get_settings()
     url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -33,70 +91,27 @@ async def _execute_gemini_request(
         "contents": [{"parts": [{"text": user_query}]}],
         "systemInstruction": {"parts": [{"text": system_prompt}]},
     }
-
     if use_json:
         payload["generationConfig"] = {"responseMimeType": "application/json"}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        for attempt in range(max_retries):
-            try:
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers={"Content-Type": "application/json"},
-                )
-                response.raise_for_status()
+        response = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
+        response.raise_for_status()
 
-                result = response.json()
-                text = (
-                    result.get("candidates", [{}])[0]
-                    .get("content", {})
-                    .get("parts", [{}])[0]
-                    .get("text", "")
-                )
+        result = response.json()
+        text = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+        if not text:
+            raise ValueError("Empty response from Gemini")
+            
+        return json.loads(text) if use_json else text
 
-                if not text:
-                    raise ValueError("Empty response from Gemini API")
-
-                return json.loads(text) if use_json else text
-
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429:
-                    logger.warning(f"Rate limited (429)! Waiting 5 seconds...")
-                    await asyncio.sleep(5)
-                    if attempt >= 2: # Fail relatively fast so UI doesn't hang
-                        raise RuntimeError(
-                            f"API Rate Limit Exhausted. Please wait a minute before sending another message."
-                        ) from e
-                    continue
-                else:
-                    logger.error(f"Gemini API attempt {attempt + 1}/{max_retries}: {e}")
-                    if attempt == max_retries - 1:
-                        raise RuntimeError(
-                            f"Maximum retries reached. Last error: {e}"
-                        ) from e
-                    await asyncio.sleep(2**attempt)
-            except Exception as e:
-                logger.error(f"Gemini API attempt {attempt + 1}/{max_retries}: {e}")
-                if attempt == max_retries - 1:
-                    raise RuntimeError(
-                        f"Maximum retries reached. Last error: {e}"
-                    ) from e
-                # Exponential backoff: 1s, 2s, 4s, 8s, 16s
-                await asyncio.sleep(2**attempt)
-
-
-async def call_groq(
+async def _call_groq_internal(
     user_query: str,
     system_prompt: str,
     use_json: bool = True,
 ) -> dict | str:
-    """
-    Fallback execute request via Groq API.
-    """
     settings = get_settings()
     url = "https://api.groq.com/openai/v1/chat/completions"
-
     payload = {
         "model": "llama-3.3-70b-versatile",
         "messages": [
@@ -104,7 +119,6 @@ async def call_groq(
             {"role": "user", "content": user_query}
         ]
     }
-
     if use_json:
         payload["response_format"] = {"type": "json_object"}
 
@@ -119,37 +133,15 @@ async def call_groq(
         )
         response.raise_for_status()
         result = response.json()
-        
         text = result.get("choices", [{}])[0].get("message", {}).get("content", "")
         if not text:
-            raise ValueError("Empty response from Groq API")
-
+            raise ValueError("Empty response from Groq")
+            
         return json.loads(text) if use_json else text
 
-
-async def call_gemini(
-    user_query: str,
-    system_prompt: str,
-    use_json: bool = True,
-    max_retries: int = 5,
-) -> dict | str:
-    """
-    Call Gemini API with exponential backoff. If it fails, fallback to Groq.
-    """
-    settings = get_settings()
-    
-    try:
-        return await _execute_gemini_request(user_query, system_prompt, use_json, max_retries)
-    except Exception as e:
-        if settings.has_groq:
-            logger.warning(f"Primary AI (Gemini) failed: {e}. Falling back to Groq...")
-            try:
-                return await call_groq(user_query, system_prompt, use_json)
-            except Exception as groq_e:
-                logger.error(f"Groq fallback also failed: {groq_e}")
-                raise RuntimeError(f"All AI Providers Failed. Primary: {e} | Fallback: {groq_e}") from groq_e
-        else:
-            raise
+async def call_gemini(user_query: str, system_prompt: str, use_json: bool = True) -> dict | str:
+    """Legacy wrapper for consistency across routes."""
+    return await call_llm_with_retry(user_query, system_prompt, use_json)
 
 
 # ────────────────────────────────────────────────────────────

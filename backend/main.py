@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 
 # ── App ────────────────────────────────────────────────────
 app = FastAPI(
-    title="CloudCompare API",
+    title="CLOS AI API",
     description=(
         "AI-driven cloud deployment comparison tool. "
         "Converts natural language into architecture blueprints, "
@@ -68,13 +68,17 @@ app = FastAPI(
 
 # ── CORS ───────────────────────────────────────────────────
 settings = get_settings()
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+if settings.frontend_url:
+    # Ensure no trailing slash for exact matches
+    origins.append(settings.frontend_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.frontend_url,
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,7 +99,7 @@ app.include_router(auth_router, prefix="/api/auth", tags=["Auth"])
 @app.get("/", tags=["System"])
 async def root():
     return {
-        "service": "CloudCompare API",
+        "service": "CLOS AI API",
         "version": "2.1.0",
         "status": "operational",
         "docs": "/docs",

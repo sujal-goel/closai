@@ -18,7 +18,7 @@ app.dependency_overrides[get_settings] = get_settings_override
 def test_root():
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json()["service"] == "CloudCompare API"
+    assert response.json()["service"] == "CLOS AI API"
 
 
 def test_health():

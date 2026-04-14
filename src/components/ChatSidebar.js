@@ -20,7 +20,7 @@ const ChatSidebar = ({ messages = [], chatHistory = [], onSendMessage, onLoadCha
       <div className="sidebar-header">
         <div className="logo">
           <span className="logo-icon">☁️</span>
-          <span className="logo-text">CloudCompare <small>v2</small></span>
+          <span className="logo-text">CLOS AI <small>v2</small></span>
         </div>
         <button className="history-toggle" onClick={() => setShowHistory(!showHistory)}>
           {showHistory ? 'Close History' : 'View History'}

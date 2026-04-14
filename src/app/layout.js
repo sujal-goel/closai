@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata = {
-  title: "CloudCompare | AI Architecture Design Tool",
+  title: "CLOS AI | AI Architecture Design Tool",
   description: "Transform natural language into cloud architecture blueprints. Compare AWS, GCP, and Azure with AI-driven scoring.",
   keywords: ["cloud architecture", "AWS", "GCP", "Azure", "system design", "AI"],
 };

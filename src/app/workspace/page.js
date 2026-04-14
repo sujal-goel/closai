@@ -201,7 +201,7 @@ export default function Home() {
   return (
     <main className="app-container">
       <div className="workspace-nav">
-        <div className="nav-logo">☁️ CloudCompare <span>Workspace</span></div>
+        <div className="nav-logo">☁️ CLOS AI <span>Workspace</span></div>
         <div className="nav-actions">
           {mappedProvider && (
             <button onClick={handleResetGeneric} className="reset-btn">
