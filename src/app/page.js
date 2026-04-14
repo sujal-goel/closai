@@ -225,9 +225,9 @@ export default function LandingPage() {
           className="team-grid"
         >
           {[
-            { name: "Alex Chen", role: "Chief Architect", img: "/team-1.png", bio: "Former AWS Principal. Specialist in high-availability distributed systems." },
-            { name: "Sarah Miller", role: "Policy Engineer", img: "/team-2.png", bio: "Leading crawler logic for factual policy indexing across the Big Three." },
-            { name: "David Kumar", role: "VP Engineering", img: "/team-3.png", bio: "20+ years scaling cloud infrastructure and agentic AI pipelines." }
+            { name: "kanak goel", role: "Chief Architect", img: "/kanak.png", bio: "Fullstack developer and AI Enthusiasts" },
+            { name: "Mehul Sharma", role: "Policy Engineer", img: "/mehul.jpg", bio: "Frontend Designer and Tech enthusiasts who designed the knowledge pipeline for this project" },
+            { name: "Vivek Kumar Sahani", role: "VP Engineering", img: "/vivek.png", bio: "Backend Developer and AI Enthusiasts who worked on the database schemas and context management" }
           ].map((m, i) => (
             <motion.div key={i} variants={itemVariants} className="member-card glass-card">
               <div className="avatar-wrapper">
