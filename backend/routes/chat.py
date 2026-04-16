@@ -168,7 +168,7 @@ async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user))
         scoring.sort(key=lambda p: p.get("totalScore", 0), reverse=True)
 
         # ── Step 10: Generate Explanation ──
-        explanation = await generate_explanation(blueprint, theory_context=theory_context)
+        explanation = await generate_explanation(blueprint, constraints=constraints, theory_context=theory_context)
 
         # ── Persist to MongoDB ──
         blueprint_id = str(uuid.uuid4())
@@ -295,7 +295,7 @@ async def refine_architecture(req: RefinementRequest, current_user: dict = Depen
         blueprint = await generate_blueprint(intent, merged, theory_context=theory_context)
         scoring = await score_providers(blueprint, merged, theory_context=theory_context)
         scoring.sort(key=lambda p: p.get("totalScore", 0), reverse=True)
-        explanation = await generate_explanation(blueprint, theory_context=theory_context)
+        explanation = await generate_explanation(blueprint, constraints=merged, theory_context=theory_context)
 
         # Persist new version
         new_id = str(uuid.uuid4())

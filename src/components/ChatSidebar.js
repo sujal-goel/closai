@@ -7,6 +7,16 @@ const ChatSidebar = ({ messages = [], chatHistory = [], onSendMessage, onLoadCha
   const [input, setInput] = useState('');
   const [showHistory, setShowHistory] = useState(false);
 
+  const formatMessageTime = (msg) => {
+    const rawValue = msg?.timestamp ?? msg?.ts;
+    if (!rawValue) return '';
+
+    const date = new Date(rawValue);
+    if (Number.isNaN(date.getTime())) return '';
+
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (input.trim() && !isLoading) {
@@ -64,7 +74,7 @@ const ChatSidebar = ({ messages = [], chatHistory = [], onSendMessage, onLoadCha
                   msg.content
                 )}
               </div>
-              <div className="message-meta">{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+              <div className="message-meta">{formatMessageTime(msg)}</div>
             </div>
           ))
         )}

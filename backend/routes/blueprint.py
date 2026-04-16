@@ -4,6 +4,7 @@ Blueprint route — handles architecture retrieval, refinement & native service 
 import uuid
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from routes.auth import get_current_user
@@ -18,6 +19,31 @@ from services.tavily_service import bulk_enrich_for_blueprint
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _parse_budget_inr(raw_budget) -> float | None:
+    if raw_budget is None:
+        return None
+    if isinstance(raw_budget, (int, float)):
+        return float(raw_budget)
+
+    text = str(raw_budget).strip().lower().replace(",", "")
+    if not text:
+        return None
+
+    match = re.search(r"(\d+(?:\.\d+)?)", text)
+    if not match:
+        return None
+
+    value = float(match.group(1))
+    if "k" in text:
+        value *= 1000
+    elif "lakh" in text:
+        value *= 100000
+    elif "million" in text:
+        value *= 1000000
+
+    return value
 
 
 NATIVE_MAPPING_PROMPT = """
@@ -138,7 +164,7 @@ async def update_blueprint(req: BlueprintUpdateRequest, current_user: dict = Dep
         scoring = await score_providers(blueprint, constraints)
         scoring.sort(key=lambda p: p.get("totalScore", 0), reverse=True)
 
-        explanation = await generate_explanation(blueprint)
+        explanation = await generate_explanation(blueprint, constraints=constraints)
 
         await blueprints.update_one(
             {"blueprintId": req.blueprint_id},
@@ -223,6 +249,32 @@ async def map_to_native(req: NativeMappingRequest, current_user: dict = Depends(
         })
 
         total_cost = mapping.get("total_estimated_monthly_cost_inr")
+        total_cost_value = float(total_cost) if isinstance(total_cost, (int, float)) else None
+        budget_value = _parse_budget_inr(existing.get("constraints", {}).get("budget_monthly_inr"))
+
+        within_budget = None
+        budget_gap = None
+        if budget_value is not None and total_cost_value is not None:
+            within_budget = total_cost_value <= budget_value
+            budget_gap = max(0.0, total_cost_value - budget_value)
+
+            mapping["budget_monthly_inr"] = budget_value
+            mapping["within_budget"] = within_budget
+            mapping["budget_gap_inr"] = budget_gap
+            if within_budget:
+                mapping["budget_note"] = (
+                    f"Proposed mapping fits the monthly budget (₹{budget_value:.2f})."
+                )
+            else:
+                mapping["budget_note"] = (
+                    f"Not feasible within budget. Required: ₹{total_cost_value:.2f}/mo, "
+                    f"budget: ₹{budget_value:.2f}/mo, gap: ₹{budget_gap:.2f}/mo."
+                )
+                mapping["required_limitations"] = [
+                    "Reduce to single-region deployment and remove multi-region failover.",
+                    "Use only free-tier or shared compute/database SKUs.",
+                    "Disable non-critical background jobs and premium observability add-ons.",
+                ]
 
         return NativeMappingResponse(
             native_blueprint_id=native_blueprint_id,

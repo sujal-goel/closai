@@ -1,9 +1,13 @@
 """
 Configuration module using Pydantic Settings for type-safe environment variables.
 """
-from pydantic_core.core_schema import model_field
+from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
+
+
+BASE_DIR = Path(__file__).resolve().parent
+ENV_FILE = BASE_DIR / ".env"
 
 class Settings(BaseSettings):
     gemini_api_key: str = ""
@@ -12,7 +16,7 @@ class Settings(BaseSettings):
     tavily_api_key: str =  "" 
     frontend_url: str = "http://localhost:3000"
     db_name: str = "cloud_compare"
-
+    
     @property
     def has_tavily(self) -> bool:
         return bool(self.tavily_api_key and self.tavily_api_key.strip())
@@ -25,7 +29,7 @@ class Settings(BaseSettings):
     def has_groq(self) -> bool:
         return bool(self.groq_api_key and self.groq_api_key.strip())
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=str(ENV_FILE), env_file_encoding="utf-8", extra="ignore")
     
 
 @lru_cache()

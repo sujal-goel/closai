@@ -289,6 +289,9 @@ EXPLAINER_SYSTEM_PROMPT = """
 You are a Principal System Design Expert writing for a CTO audience.
 Given a cloud architecture blueprint and relevant theoretical context from our knowledge base, provide EXACTLY 4 sentences utilizing advanced engineering terminology.
 CRITICAL: All cost references in the explanation MUST be in Indian Rupees (₹). conversion is 1:83.
+CRITICAL BUDGET RULE: If constraints include budget_monthly_inr, you MUST explicitly validate feasibility against that budget.
+- If feasible: state that the recommendation fits within budget.
+- If not feasible: explicitly say it is NOT feasible within budget, provide the minimum realistic monthly range, and list 2-3 concrete limitations required to stay within budget.
 1. What this architecture achieves (System functionality and consistency model).
 2. The caching tier or data ingestion strategy, referencing specific design theory if provided.
 3. Failover domains and the chosen RTO/SLA profile, justified by architectural best practices.
@@ -346,9 +349,11 @@ async def summarize_history(history: list[dict], existing_summary: str = "") -> 
     return await call_gemini(query, SUMMARY_SYSTEM_PROMPT, use_json=False)
 
 
-async def generate_explanation(blueprint: dict, theory_context: str = "") -> str:
+async def generate_explanation(blueprint: dict, constraints: dict | None = None, theory_context: str = "") -> str:
     """Step 16: 4-sentence architectural explanation, grounded in theory."""
     query = f"Architecture blueprint: {json.dumps(blueprint)}"
+    if constraints:
+        query += f"\nConstraints: {json.dumps(constraints)}"
     if theory_context:
         query += f"\n\n{theory_context}"
         

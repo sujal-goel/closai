@@ -3,6 +3,7 @@ Cloud Deployment Comparison Tool — FastAPI Backend
 Main application entry point with robust startup/shutdown lifecycle.
 """
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,7 +11,8 @@ from config import get_settings
 from services.database import connect_db, close_db
 from services.daily_sync import sync_daily_market_pulse, execute_single_sync
 from services.knowledge_service import init_knowledge_base
-
+import asyncio
+import logging
 # ── Logging ────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -71,6 +73,8 @@ app = FastAPI(
 
 # ── CORS ───────────────────────────────────────────────────
 settings = get_settings()
+print(settings)
+
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",

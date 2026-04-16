@@ -176,9 +176,21 @@ export default function Home() {
       const data = await response.json();
       setActiveMapping(data.mapping);
 
+      const withinBudget = data.mapping?.within_budget;
+      const budgetNote = data.mapping?.budget_note;
+      const limitations = data.mapping?.required_limitations || [];
+
+      const mappingMessage = withinBudget === false
+        ? [
+            `❌ Native mapping for ${providerId.toUpperCase()} is not feasible within your budget.`,
+            budgetNote || '',
+            limitations.length ? `Limitations to stay within budget:\n- ${limitations.join('\n- ')}` : '',
+          ].filter(Boolean).join('\n\n')
+        : `✅ Native mapping complete for ${providerId.toUpperCase()}. Estimated cost: ₹${data.mapping?.total_estimated_monthly_cost_inr?.toFixed(2) || 'N/A'}/mo`;
+
       setMessages(prev => [...prev, {
         role: 'model',
-        content: `✅ Native mapping complete for ${providerId.toUpperCase()}. Estimated cost: ₹${data.mapping?.total_estimated_monthly_cost_inr?.toFixed(2) || 'N/A'}/mo`,
+        content: mappingMessage,
         timestamp: new Date()
       }]);
     } catch (error) {
