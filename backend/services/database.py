@@ -55,6 +55,11 @@ async def _ensure_indexes():
         await _db.skus.create_index(
             [("provider_id", 1), ("workload_category", 1), ("region", 1)]
         )
+        await _db.skus.create_index(
+            [("provider", 1), ("service", 1), ("region", 1), ("instance_type", 1)],
+            unique=True,
+            sparse=True,
+        )
         await _db.market_intel.create_index(
             [("provider", 1), ("service", 1), ("region", 1)],
         )

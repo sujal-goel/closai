@@ -13,7 +13,7 @@ from typing import Optional
 
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.vectorstores import FAISS
 
 logger = logging.getLogger(__name__)
@@ -92,14 +92,7 @@ def _build_vectorstore():
     """Runs in a background thread to build the FAISS index without blocking startup."""
     global _vectorstore, _is_ready
 
-    from config import get_settings
-    settings = get_settings()
-
-    if not settings.has_gemini:
-        logger.warning("GEMINI_API_KEY not set — RAG knowledge base disabled.")
-        return
-
-    logger.info("🧠 Building LangChain RAG Knowledge Base (background)...")
+    logger.info("🧠 Building LangChain RAG Knowledge Base (Local FastEmbed)...")
 
     try:
         docs = _parse_dataset_to_documents(max_docs=3000)
@@ -115,9 +108,8 @@ def _build_vectorstore():
         chunks = splitter.split_documents(docs)
         logger.info(f"Chunked into {len(chunks)} pieces, starting embedding...")
 
-        embeddings = GoogleGenerativeAIEmbeddings(
-            model="gemini-embedding-2-preview",
-            google_api_key=settings.gemini_api_key,
+        embeddings = FastEmbedEmbeddings(
+            model_name="BAAI/bge-small-en-v1.5",
         )
 
         _vectorstore = FAISS.from_documents(chunks, embeddings)

@@ -72,6 +72,14 @@ class ProviderScore(BaseModel):
     reasoning: str = ""
 
 
+class DeploymentPlan(BaseModel):
+    expected_latency_ms: Optional[int] = None
+    concurrency_limit: Optional[int] = None
+    total_users_capacity: Optional[int] = None
+    compliance_status: list[str] = Field(default_factory=list)
+    scalability_rating: str = "Unknown"
+
+
 class ChatResponse(BaseModel):
     chat_id: str
     phase: str  # "clarifying" | "scored" | "error"
@@ -81,6 +89,7 @@ class ChatResponse(BaseModel):
     scoring: Optional[list[dict]] = None
     intent_analysis: Optional[dict] = None
     theory_context: Optional[str] = None
+    deployment_plan: Optional[DeploymentPlan] = None
 
 
 class BlueprintResponse(BaseModel):
@@ -118,3 +127,28 @@ class NativeMappingResponse(BaseModel):
     provider: str
     mapping: dict = Field(default_factory=dict)
     total_estimated_cost: Optional[float] = None
+
+
+# ── Market Intelligence Models ────────────────────────────
+
+class PerformanceMetrics(BaseModel):
+    latency_ms: Optional[int] = None
+    throughput: Optional[str] = None
+    concurrent_users_limit: Optional[int] = None
+    scalability: str = "Unknown"
+
+
+class ComplianceInfo(BaseModel):
+    certifications: list[str] = Field(default_factory=list)
+    regions_supported: list[str] = Field(default_factory=list)
+
+
+class ServiceIntel(BaseModel):
+    provider: str
+    service: str
+    free_tier_details: str
+    usage_limits: dict = Field(default_factory=dict)
+    performance: PerformanceMetrics = Field(default_factory=PerformanceMetrics)
+    compliance: ComplianceInfo = Field(default_factory=ComplianceInfo)
+    paid_offerings_summary: str = ""
+    last_updated: datetime = Field(default_factory=datetime.utcnow)

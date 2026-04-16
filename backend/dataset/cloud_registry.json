@@ -1,0 +1,74 @@
+{
+    "AWS": {
+        "services": {
+            "EC2": {
+                "url": "https://docs.aws.amazon.com/ec2/index.html",
+                "base_free_tier": "750 hours per month for 12 months (t2.micro/t3.micro)"
+            },
+            "Lambda": {
+                "url": "https://docs.aws.amazon.com/lambda/latest/dg/welcome.html",
+                "base_free_tier": "1 million free requests per month"
+            },
+            "S3": {
+                "url": "https://docs.aws.amazon.com/s3/index.html",
+                "base_free_tier": "5 GB of standard storage"
+            }
+        }
+    },
+    "GCP": {
+        "services": {
+            "Compute Engine": {
+                "url": "https://cloud.google.com/compute/docs",
+                "base_free_tier": "e2-micro instance (us regions only)"
+            },
+            "Cloud Run": {
+                "url": "https://cloud.google.com/run/docs",
+                "base_free_tier": "2 million requests per month"
+            }
+        }
+    },
+    "Vercel": {
+        "services": {
+            "Hosting": {
+                "url": "https://vercel.com/docs/pricing",
+                "base_free_tier": "Unlimited bandwidth (fair use), hobby tier"
+            },
+            "Edge Functions": {
+                "url": "https://vercel.com/docs/functions/edge-functions",
+                "base_free_tier": "50,000 executions per month"
+            }
+        }
+    },
+    "Netlify": {
+        "services": {
+            "Hosting": {
+                "url": "https://www.netlify.com/pricing/",
+                "base_free_tier": "100GB bandwidth, 300 build minutes"
+            }
+        }
+    },
+    "Render": {
+        "services": {
+            "Web Services": {
+                "url": "https://render.com/docs/free",
+                "base_free_tier": "Free instance types for web and background workers"
+            }
+        }
+    },
+    "Railway": {
+        "services": {
+            "Deployment": {
+                "url": "https://railway.app/docs/pricing/free-trial",
+                "base_free_tier": "500 hours / $5 credit per month"
+            }
+        }
+    },
+    "Hyperstack": {
+        "services": {
+            "GPU Compute": {
+                "url": "https://www.hyperstack.cloud/pricing",
+                "base_free_tier": "Premium GPU slices available with credits"
+            }
+        }
+    }
+}

@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends
 from routes.auth import get_current_user
+from config import get_settings
 
 from models.schemas import (
     BlueprintUpdateRequest, NativeMappingRequest,
@@ -16,6 +17,7 @@ from models.schemas import (
 from services.gemini_service import call_gemini, score_providers, generate_explanation
 from services.database import blueprints_collection, chats_collection, is_connected
 from services.tavily_service import bulk_enrich_for_blueprint
+from services.live_pricing_service import fetch_live_price_record
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -51,31 +53,11 @@ You are a cloud infrastructure specialist.
 Given a generic architecture blueprint and a target cloud provider,
 map each generic component to the BEST-FIT native service.
 
-Mapping examples:
-- api_gateway → AWS: "Amazon API Gateway", GCP: "Apigee / Cloud Endpoints", Azure: "Azure API Management"
-- api_server → AWS: "ECS Fargate / App Runner", GCP: "Cloud Run", Azure: "Azure Container Apps"
-- gpu_worker → AWS: "EC2 P4d / SageMaker", GCP: "Vertex AI / A2 VMs", Azure: "NC-series VMs"
-- relational_database → AWS: "RDS Aurora", GCP: "Cloud SQL / AlloyDB", Azure: "Azure SQL"
-- message_queue → AWS: "SQS", GCP: "Pub/Sub", Azure: "Service Bus"
-- object_storage → AWS: "S3", GCP: "Cloud Storage", Azure: "Blob Storage"
-- cache → AWS: "ElastiCache", GCP: "Memorystore", Azure: "Azure Cache for Redis"
-- auth_service → AWS: "Cognito", GCP: "Firebase Auth / Identity Platform", Azure: "Azure AD B2C"
-- load_balancer → AWS: "ALB / NLB", GCP: "Cloud Load Balancing", Azure: "Azure Load Balancer"
-- cdn → AWS: "CloudFront", GCP: "Cloud CDN", Azure: "Azure CDN"
-- logging → AWS: "CloudWatch Logs", GCP: "Cloud Logging", Azure: "Azure Monitor Logs"
-- metrics → AWS: "CloudWatch Metrics", GCP: "Cloud Monitoring", Azure: "Azure Monitor"
-- alerting → AWS: "CloudWatch Alarms + SNS", GCP: "Cloud Alerting", Azure: "Azure Alerts"
-- secrets_manager → AWS: "Secrets Manager", GCP: "Secret Manager", Azure: "Key Vault"
-- scheduler → AWS: "EventBridge Scheduler", GCP: "Cloud Scheduler", Azure: "Logic Apps"
-- background_worker → AWS: "Lambda / Step Functions", GCP: "Cloud Tasks / Workflows", Azure: "Azure Functions"
-- document_store → AWS: "DynamoDB", GCP: "Firestore", Azure: "Cosmos DB"
-- data_warehouse → AWS: "Redshift", GCP: "BigQuery", Azure: "Synapse Analytics"
-
 For each node, provide:
 - native_service: The specific provider service name
-- sku: The recommended SKU/tier (e.g., "db.r6g.large")
-- estimated_monthly_cost_inr: Best estimate
-- estimated_latency_ms: Typical latency/processing time (number)
+- sku: The recommended SKU/tier hint (e.g., "t3.micro", "e2-micro", "Standard_B1s")
+- estimated_monthly_cost_inr: null (will be filled by live pricing APIs)
+- estimated_latency_ms: Typical latency/processing time (number, optional)
 - sla_percentage: Availability SLA (e.g., "99.99")
 - region_available: boolean
 - notes: Any relevant caveats
@@ -89,17 +71,137 @@ Return JSON:
       "generic_type": "api_gateway",
       "native_service": "Amazon API Gateway",
       "sku": "REST API",
-      "estimated_monthly_cost_inr": 35,
+      "estimated_monthly_cost_inr": null,
       "estimated_latency_ms": 15,
       "sla_percentage": "99.95",
       "region_available": true,
       "notes": "Includes 1M API calls/month in free tier"
     }
   ],
-  "total_estimated_monthly_cost_inr": 1250,
+  "total_estimated_monthly_cost_inr": null,
   "validation_warnings": ["Some GPU instances may have limited availability in eu-west-1"]
 }
 """
+
+
+def _provider_label(provider: str) -> str:
+    p = (provider or "").strip().lower()
+    if p == "aws":
+        return "AWS"
+    if p == "gcp":
+        return "GCP"
+    if p == "azure":
+        return "AZURE"
+    return provider.upper()
+
+
+def _live_price_target(provider: str, item: dict) -> tuple[str, str]:
+    generic_type = (item.get("generic_type") or "").strip().lower()
+    sku_hint = (item.get("sku") or "").strip()
+    native_service = (item.get("native_service") or "").strip().lower()
+
+    def pick_sku(default_value: str) -> str:
+        # LLMs may return non-SKU labels (e.g., "REST API"). Keep only SKU-like hints.
+        if re.search(r"[a-z]\d|standard_|db\.|micro|small|medium|large|xlarge", sku_hint.lower()):
+            return sku_hint
+        return default_value
+
+    if provider == "AWS":
+        if "rds" in native_service or "aurora" in native_service:
+            return ("RDS", pick_sku("db.t3.micro"))
+        if "s3" in native_service:
+            return ("S3", "Standard")
+        if generic_type in {"api_server", "gpu_worker", "background_worker"}:
+            return ("EC2", pick_sku("t3.micro"))
+        if generic_type in {"relational_database", "document_store"}:
+            return ("RDS", pick_sku("db.t3.micro"))
+        if generic_type in {"object_storage", "cdn"}:
+            return ("S3", sku_hint or "Standard")
+        return ("EC2", pick_sku("t3.micro"))
+
+    if provider == "GCP":
+        if "cloud sql" in native_service or "alloydb" in native_service:
+            return ("Cloud SQL", pick_sku("db-f1-micro"))
+        if "cloud storage" in native_service:
+            return ("Cloud Storage", "Standard")
+        if "run" in native_service or "app engine" in native_service:
+            return ("Cloud Run", "Fully Managed")
+        if "functions" in native_service:
+            return ("Cloud Functions", "Tier 1")
+        if generic_type in {"api_server", "gpu_worker", "background_worker"}:
+            return ("Compute Engine", pick_sku("e2-micro"))
+        if generic_type in {"relational_database", "document_store"}:
+            return ("Cloud SQL", pick_sku("db-f1-micro"))
+        if generic_type in {"object_storage", "cdn"}:
+            return ("Cloud Storage", sku_hint or "Standard")
+        return ("Compute Engine", pick_sku("e2-micro"))
+
+    if provider == "AZURE":
+        if "sql" in native_service:
+            return ("Azure SQL", "Basic")
+        if "blob" in native_service or "storage" in native_service:
+            return ("Blob Storage", "Hot")
+        if generic_type in {"api_server", "gpu_worker", "background_worker"}:
+            return ("Virtual Machines", pick_sku("Standard_B1s"))
+        if generic_type in {"relational_database", "document_store"}:
+            return ("Azure SQL", sku_hint or "Basic")
+        if generic_type in {"object_storage", "cdn"}:
+            return ("Blob Storage", sku_hint or "Hot")
+        return ("Virtual Machines", pick_sku("Standard_B1s"))
+
+    return ("Compute", sku_hint or "default")
+
+
+def _normalize_region_for_provider(provider: str, region: str) -> str:
+    p = (provider or "").upper()
+    r = (region or "").strip().lower()
+    if not r:
+        return region
+
+    if p == "AWS":
+        aws_map = {
+            "eastus": "us-east-1",
+            "westus2": "us-west-2",
+            "westeurope": "eu-west-1",
+            "asia-south1": "ap-south-1",
+        }
+        return aws_map.get(r, region)
+
+    if p == "GCP":
+        gcp_map = {
+            "ap-south-1": "asia-south1",
+            "us-east-1": "us-east1",
+            "us-west-2": "us-west2",
+            "eu-west-1": "europe-west1",
+            "eastus": "us-east1",
+            "westus2": "us-west2",
+            "westeurope": "europe-west1",
+        }
+        return gcp_map.get(r, region)
+
+    if p == "AZURE":
+        azure_map = {
+            "ap-south-1": "centralindia",
+            "us-east-1": "eastus",
+            "us-west-2": "westus2",
+            "eu-west-1": "westeurope",
+            "asia-south1": "centralindia",
+        }
+        return azure_map.get(r, region)
+
+    return region
+
+
+def _get_fallback_cost(generic_type: str) -> float:
+    """Provides a realistic baseline monthly cost in INR if live fetching fails."""
+    t = (generic_type or "").lower()
+    if any(k in t for k in ["api", "function", "lambda", "worker", "gateway"]):
+        return 150.0 # Base execution fees
+    if any(k in t for k in ["database", "db", "store", "cache"]):
+        return 2200.0 # Standard managed DB
+    if any(k in t for k in ["bucket", "storage", "cdn"]):
+        return 350.0 # Baseline storage
+    return 850.0 # Default compute instance cost
 
 
 @router.get("/blueprint/{blueprint_id}", response_model=BlueprintResponse)
@@ -232,6 +334,56 @@ async def map_to_native(req: NativeMappingRequest, current_user: dict = Depends(
         )
 
         mapping = await call_gemini(query, NATIVE_MAPPING_PROMPT, use_json=True)
+
+        # Replace static estimates with live provider API pricing.
+        settings = get_settings()
+        provider_label = _provider_label(req.provider)
+        mapping_items = mapping.get("mappings", []) if isinstance(mapping, dict) else []
+        live_records = []
+        computed_total = 0.0
+
+        for item in mapping_items:
+            service, instance_type = _live_price_target(provider_label, item)
+            provider_region = _normalize_region_for_provider(provider_label, req.region)
+            
+            # 1. Try Live Price
+            live_record = await fetch_live_price_record(
+                provider=provider_label,
+                service=service,
+                region=provider_region,
+                instance_type=instance_type,
+                gcp_api_key=settings.gcp_billing_api_key,
+            )
+            
+            if live_record:
+                monthly_cost = float(live_record["price_per_hour"]) * 730.0
+                item["estimated_monthly_cost_inr"] = round(monthly_cost, 2)
+                item["pricing_engine"] = "live-provider-apis"
+                item["live_price_source"] = {
+                    "provider": live_record["provider"],
+                    "service": live_record["service"],
+                    "region": live_record["region"],
+                    "instance_type": live_record["instance_type"],
+                    "price_per_hour": live_record["price_per_hour"],
+                    "currency": live_record["currency"],
+                    "last_updated": live_record["last_updated"],
+                }
+                live_records.append(item["live_price_source"])
+                computed_total += monthly_cost
+            else:
+                # 2. Apply Baseline Fallback
+                fallback = _get_fallback_cost(item.get("generic_type", ""))
+                item["estimated_monthly_cost_inr"] = fallback
+                item["pricing_engine"] = "baseline-estimate"
+                item["pricing_note"] = "Regional baseline"
+                computed_total += fallback
+
+        mapping["total_estimated_monthly_cost_inr"] = round(computed_total, 2)
+        if live_records:
+            mapping["pricing_records"] = live_records
+            mapping["pricing_engine_global"] = "mixed-live-fallback"
+        else:
+            mapping["pricing_engine_global"] = "baseline-estimate"
 
         # Save native blueprint variant
         native_blueprint_id = str(uuid.uuid4())

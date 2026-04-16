@@ -3,6 +3,11 @@ Cloud Deployment Comparison Tool — FastAPI Backend
 Main application entry point with robust startup/shutdown lifecycle.
 """
 import os
+import sys
+
+# Ensure the backend directory is in the Python path for standalone operation
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -73,7 +78,6 @@ app = FastAPI(
 
 # ── CORS ───────────────────────────────────────────────────
 settings = get_settings()
-print(settings)
 
 origins = [
     "http://localhost:3000",
@@ -141,11 +145,17 @@ async def trigger_sync(authorization: str = Header(None)):
             detail="Invalid cron secret",
         )
     
-    # Run sync in background (it will likely finish within Vercel's timeout if data is small, 
-    # but strictly speaking serverless might kill it if it takes too long. 
-    # Vercel CRONs wait for response.)
     success = await execute_single_sync()
     if not success:
         raise HTTPException(status_code=500, detail="Sync failed")
         
     return {"status": "success", "message": "Manual sync completed."}
+
+
+@app.get("/api/market-intel", tags=["System"])
+async def get_all_intel():
+    """Retrieve all distilled market intelligence."""
+    from services.database import market_intel_collection
+    cursor = market_intel_collection().find({"type": "distilled_intel"})
+    results = await cursor.to_list(length=100)
+    return {"intel": results}

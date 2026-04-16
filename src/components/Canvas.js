@@ -19,115 +19,174 @@ const Canvas = ({
 }) => {
   const mappings = activeMapping?.mappings || [];
   const [activeInfoNode, setActiveInfoNode] = useState(null);
+  
+  // Interactivity state
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [localNodes, setLocalNodes] = useState(nodes);
+  const [isPanning, setIsPanning] = useState(false);
+  const [dragNodeId, setDragNodeId] = useState(null);
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+
+  useEffect(() => {
+    setLocalNodes(nodes);
+  }, [nodes]);
+
+  const handleMouseDown = (e) => {
+    // If clicking background, start panning
+    if (e.target.classList.contains('canvas-wrapper') || e.target.classList.contains('canvas-grid')) {
+      setIsPanning(true);
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleMouseMove = (e) => {
+    if (isPanning) {
+      const dx = e.clientX - lastMousePos.x;
+      const dy = e.clientY - lastMousePos.y;
+      setPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    } else if (dragNodeId) {
+      const dx = e.clientX - lastMousePos.x;
+      const dy = e.clientY - lastMousePos.y;
+      setLocalNodes(prev => prev.map(n => 
+        n.id === dragNodeId ? { ...n, x: n.x + dx, y: n.y + dy } : n
+      ));
+      setLastMousePos({ x: e.clientX, y: e.clientY });
+    }
+  };
+
+  const handleMouseUp = () => {
+    setIsPanning(false);
+    setDragNodeId(null);
+  };
+
+  const handleNodeMouseDown = (e, nodeId) => {
+    e.stopPropagation();
+    setDragNodeId(nodeId);
+    setLastMousePos({ x: e.clientX, y: e.clientY });
+  };
 
   return (
-    <div className="canvas-wrapper">
-      <div className="canvas-grid"></div>
-      
-      <svg className="canvas-edges">
-        {edges.map((edge, index) => {
-          const sourceNode = nodes.find(n => n.id === edge.source);
-          const targetNode = nodes.find(n => n.id === edge.target);
-          if (!sourceNode || !targetNode) return null;
-          
-          return (
-            <g key={`edge-${index}`}>
-              <line
-                x1={sourceNode.x}
-                y1={sourceNode.y}
-                x2={targetNode.x}
-                y2={targetNode.y}
-                stroke="rgba(0, 245, 255, 0.15)"
-                strokeWidth="2"
-              />
-              <circle r="3" fill="var(--accent-primary)">
-                <animateMotion
-                  dur="3s"
-                  repeatCount="indefinite"
-                  path={`M ${sourceNode.x} ${sourceNode.y} L ${targetNode.x} ${targetNode.y}`}
+    <div 
+      className="canvas-wrapper"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      <div 
+        className="canvas-container"
+        style={{ transform: `translate(${pan.x}px, ${pan.y}px)` }}
+      >
+        <div className="canvas-grid"></div>
+        
+        <svg className="canvas-edges">
+          {edges.map((edge, index) => {
+            const sourceNode = localNodes.find(n => n.id === edge.source);
+            const targetNode = localNodes.find(n => n.id === edge.target);
+            if (!sourceNode || !targetNode) return null;
+            
+            return (
+              <g key={`edge-${index}`}>
+                <line
+                  x1={sourceNode.x}
+                  y1={sourceNode.y}
+                  x2={targetNode.x}
+                  y2={targetNode.y}
+                  stroke="rgba(0, 245, 255, 0.15)"
+                  strokeWidth="2"
                 />
-              </circle>
-            </g>
-          );
-        })}
-      </svg>
+                <circle r="3" fill="var(--accent-primary)">
+                  <animateMotion
+                    dur="3s"
+                    repeatCount="indefinite"
+                    path={`M ${sourceNode.x} ${sourceNode.y} L ${targetNode.x} ${targetNode.y}`}
+                  />
+                </circle>
+              </g>
+            );
+          })}
+        </svg>
 
-      <div className="canvas-nodes">
-        {nodes.map((node) => {
-          const mapping = mappings.find(m => m.generic_id === node.id);
-          const isMapped = !!mapping;
-          
-          return (
-            <div
-              key={node.id}
-              className={`canvas-node ${node.type} ${selectedNodeId === node.id ? 'selected' : ''} ${isMapped ? provider.toLowerCase() : ''}`}
-              onClick={() => onNodeClick?.(node)}
-              style={{
-                left: node.x,
-                top: node.y,
-                transform: 'translate(-50%, -50%)',
-                animation: `nodeEntry 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards`,
-              }}
-            >
-              <div className="node-icon">
-                {getIconForType(node.type, isMapped ? provider : null)}
-                {isMapped && <div className="provider-badge">{provider}</div>}
-              </div>
-              <div className="node-label">
-                {isMapped ? mapping.native_service : (node.label || node.id)}
-              </div>
-              
-              {isMapped ? (
-                <div className="node-specs glass">
-                  <div className="spec-item" title="Estimated Monthly Cost">
-                    <span className="spec-icon">💰</span>
-                    <span className="spec-val">₹{mapping.estimated_monthly_cost_inr?.toFixed(2) || '0.00'}</span>
-                  </div>
-                  <div className="spec-item" title="Typical Latency">
-                    <span className="spec-icon">⚡</span>
-                    <span className="spec-val">{mapping.estimated_latency_ms}ms</span>
-                  </div>
-                  <div className="spec-item" title="SLA Guarantee">
-                    <span className="spec-icon">✅</span>
-                    <span className="spec-val">{mapping.sla_percentage}%</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="node-status">{node.status || 'Active'}</div>
-              )}
-
-              {/* Info Button */}
-              <button 
-                className="info-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveInfoNode(activeInfoNode === node.id ? null : node.id);
+        <div className="canvas-nodes">
+          {localNodes.map((node) => {
+            const mapping = mappings.find(m => m.generic_id === node.id);
+            const isMapped = !!mapping;
+            
+            return (
+              <div
+                key={node.id}
+                className={`canvas-node ${node.type} ${selectedNodeId === node.id ? 'selected' : ''} ${isMapped ? provider.toLowerCase() : ''}`}
+                onClick={() => onNodeClick?.(node)}
+                onMouseDown={(e) => handleNodeMouseDown(e, node.id)}
+                style={{
+                  left: node.x,
+                  top: node.y,
+                  transform: 'translate(-50%, -50%)',
+                  animation: dragNodeId === node.id ? 'none' : `nodeEntry 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards`,
+                  cursor: dragNodeId === node.id ? 'grabbing' : 'grab'
                 }}
-                title="View Component Info"
               >
-                i
-              </button>
-
-              {/* Info Box */}
-              {activeInfoNode === node.id && (
-                <div className="info-box glass" onClick={(e) => e.stopPropagation()}>
-                  <div className="info-head">{isMapped ? 'Policy & Details' : 'Component Info'}</div>
-                  <div className="info-text">
-                    {isMapped 
-                      ? (mapping.notes || 'No specific policy notes available.')
-                      : `A generic ${node.type.replace('_', ' ')} component awaiting provider mapping.`}
-                  </div>
-                  {isMapped && (
-                    <div className="info-meta">
-                      <span><strong>SKU / Tier:</strong> {mapping.sku || 'Default'}</span>
-                      <span><strong>Region Ok:</strong> {mapping.region_available ? 'Yes' : 'No'}</span>
-                    </div>
-                  )}
+                <div className="node-icon">
+                  {getIconForType(node.type, isMapped ? provider : null)}
+                  {isMapped && <div className="provider-badge">{provider}</div>}
                 </div>
-              )}
-            </div>
-          );
-        })}
+                <div className="node-label">
+                  {isMapped ? mapping.native_service : (node.label || node.id)}
+                </div>
+                
+                {isMapped ? (
+                  <div className="node-specs glass">
+                    <div className="spec-item" title="Estimated Monthly Cost">
+                      <span className="spec-icon">💰</span>
+                      <span className="spec-val">₹{mapping.estimated_monthly_cost_inr?.toFixed(2) || '0.00'}</span>
+                    </div>
+                    <div className="spec-item" title="Typical Latency">
+                      <span className="spec-icon">⚡</span>
+                      <span className="spec-val">{mapping.estimated_latency_ms}ms</span>
+                    </div>
+                    <div className="spec-item" title="SLA Guarantee">
+                      <span className="spec-icon">✅</span>
+                      <span className="spec-val">{mapping.sla_percentage}%</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="node-status">{node.status || 'Active'}</div>
+                )}
+
+                {/* Info Button */}
+                <button 
+                  className="info-btn"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveInfoNode(activeInfoNode === node.id ? null : node.id);
+                  }}
+                  title="View Component Info"
+                >
+                  i
+                </button>
+
+                {/* Info Box */}
+                {activeInfoNode === node.id && (
+                  <div className="info-box glass" onClick={(e) => e.stopPropagation()}>
+                    <div className="info-head">{isMapped ? 'Policy & Details' : 'Component Info'}</div>
+                    <div className="info-text">
+                      {isMapped 
+                        ? (mapping.notes || 'No specific policy notes available.')
+                        : `A generic ${node.type.replace('_', ' ')} component awaiting provider mapping.`}
+                    </div>
+                    {isMapped && (
+                      <div className="info-meta">
+                        <span><strong>SKU / Tier:</strong> {mapping.sku || 'Default'}</span>
+                        <span><strong>Region Ok:</strong> {mapping.region_available ? 'Yes' : 'No'}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <style jsx>{`

@@ -13,6 +13,21 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# ── Opik Observability ─────────────────────────────
+try:
+    from opik import Opik, track
+    opik_client = Opik()
+    HAS_OPIK = True
+    logger.info("✅ Opik Observability integrated.")
+except ImportError:
+    HAS_OPIK = False
+    logger.warning("⚠️ Opik not installed. Observability disabled.")
+    # No-op decorator fallback
+    def track(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 GEMINI_MODEL = "gemini-3-flash-preview"
 AI_SEMAPHORE = asyncio.Semaphore(2)  # Limit concurrent AI calls
 QUERY_CACHE = {}  # Simple in-memory cache
@@ -22,6 +37,7 @@ def _get_cache_key(user_query: str, system_prompt: str, use_json: bool) -> str:
     payload = f"{system_prompt}|{user_query}|{use_json}"
     return hashlib.md5(payload.encode()).hexdigest()
 
+@track(name="call_llm_with_retry", metadata={"integration": "gemini_groq"})
 async def call_llm_with_retry(
     user_query: str,
     system_prompt: str,
@@ -287,26 +303,33 @@ Return JSON:
 
 EXPLAINER_SYSTEM_PROMPT = """
 You are a Principal System Design Expert writing for a CTO audience.
-Given a cloud architecture blueprint and relevant theoretical context from our knowledge base, provide EXACTLY 4 sentences utilizing advanced engineering terminology.
+Given a cloud architecture blueprint, relevant theoretical context from our knowledge base, and DISTILLED MARKET INTELLIGENCE (actual limits, compliance, performance), provide EXACTLY 5 sentences utilizing advanced engineering terminology.
+
+CRITICAL: You MUST use the provided Market Intelligence to state:
+1. **Expected Latency**: Based on provider limits or theoretical minimums for the chosen services.
+2. **Concurrency**: Estimate how many concurrent users this specific architecture can handle (e.g., "10k concurrent users").
+3. **Total User Capacity**: Estimate daily/monthly total user capacity.
+4. **Compliance**: State explicitly what compliance standards are met (e.g., SOC2, HIPAA).
+5. **Future Scalability**: Explain how it scales (auto-scaling, horizontal shards).
+
 CRITICAL: All cost references in the explanation MUST be in Indian Rupees (₹). conversion is 1:83.
 CRITICAL BUDGET RULE: If constraints include budget_monthly_inr, you MUST explicitly validate feasibility against that budget.
-- If feasible: state that the recommendation fits within budget.
-- If not feasible: explicitly say it is NOT feasible within budget, provide the minimum realistic monthly range, and list 2-3 concrete limitations required to stay within budget.
-1. What this architecture achieves (System functionality and consistency model).
-2. The caching tier or data ingestion strategy, referencing specific design theory if provided.
-3. Failover domains and the chosen RTO/SLA profile, justified by architectural best practices.
-4. The primary trade-off accepted, directly linked to the theoretical context provided (e.g. CAP theorem implications).
 
-CRITICAL: If "### SYSTEM DESIGN THEORY CONTEXT ###" is present in the query, you MUST explicitly weave at least one specific theoretical principle from it into your explanation to provide a "grounded" justification.
+1. System functionality and consistency model achieved.
+2. The caching tier or data ingestion strategy, referencing specific design theory.
+3. Performance profile: State EXPLICIT numbers for latency and concurrent users based on the MARKET INTELLIGENCE if provided.
+4. Failover domains, chosen RTO/SLA, and COMPLIANCE status (SOC2/HIPAA/GDPR).
+5. Scalability path and architectural trade-off accepted (CAP theorem implication).
 
-Be concise, technically surgical, and highly professional. 
-After the paragraph, add a clean section:
+CRITICAL: If "### SYSTEM DESIGN THEORY CONTEXT ###" is present, weave at least one principle from it.
+CRITICAL: If "### DISTILLED MARKET INTEL ###" is present, you MUST use the concrete limits/metrics from it.
+
 PROS: [2 concise high-level bullet points]
 CONS: [2 concise high-level bullet points]
-Do NOT use bullet points for the main paragraph.
 """
 
 
+@track(name="classify_intent")
 async def classify_intent(user_message: str) -> dict:
     """Step 2: Intent Classification & Constraint Extraction."""
     result = await call_gemini(user_message, INTENT_SYSTEM_PROMPT, use_json=True)
@@ -315,6 +338,7 @@ async def classify_intent(user_message: str) -> dict:
     return result
 
 
+@track(name="generate_blueprint")
 async def generate_blueprint(intent: str, constraints: dict, theory_context: str = "") -> dict:
     """Step 8: Generic Blueprint Generation with Local RAG."""
     query = f"Workload type: {intent}\nConstraints: {json.dumps(constraints)}"
@@ -328,6 +352,7 @@ async def generate_blueprint(intent: str, constraints: dict, theory_context: str
     return result
 
 
+@track(name="score_providers")
 async def score_providers(blueprint: dict, constraints: dict, market_intel: str = "", theory_context: str = "") -> list:
     """Step 9: Immediate Scoring across all providers."""
     query = (
@@ -336,10 +361,36 @@ async def score_providers(blueprint: dict, constraints: dict, market_intel: str 
         f"Market Intelligence: {market_intel}\n"
         f"System Design Theory Context: {theory_context}"
     )
-    result = await call_gemini(query, SCORING_SYSTEM_PROMPT, use_json=True)
-    if isinstance(result, list):
-        return result
-    return result.get("providers", [])
+    raw_result = await call_gemini(query, SCORING_SYSTEM_PROMPT, use_json=True)
+    
+    # Normalize results
+    providers = []
+    if isinstance(raw_result, list):
+        providers = raw_result
+    elif isinstance(raw_result, dict):
+        providers = raw_result.get("providers", [])
+    
+    # Ensure each provider has an 'id'
+    normalized = []
+    for p in providers:
+        if not isinstance(p, dict):
+            continue
+            
+        if "id" not in p:
+            # Derive ID from name if possible, or use a default
+            name = p.get("name", "").lower()
+            if "amazon" in name or "aws" in name:
+                p["id"] = "aws"
+            elif "google" in name or "gcp" in name:
+                p["id"] = "gcp"
+            elif "azure" in name or "microsoft" in name or "msoft" in name:
+                p["id"] = "azure"
+            else:
+                p["id"] = name.replace(" ", "_").strip("_") or f"provider_{len(normalized)}"
+        
+        normalized.append(p)
+    
+    return normalized
 
 
 async def summarize_history(history: list[dict], existing_summary: str = "") -> str:
@@ -349,12 +400,53 @@ async def summarize_history(history: list[dict], existing_summary: str = "") -> 
     return await call_gemini(query, SUMMARY_SYSTEM_PROMPT, use_json=False)
 
 
-async def generate_explanation(blueprint: dict, constraints: dict | None = None, theory_context: str = "") -> str:
-    """Step 16: 4-sentence architectural explanation, grounded in theory."""
+@track(name="generate_explanation")
+async def generate_explanation(blueprint: dict, constraints: dict | None = None, theory_context: str = "", market_intel: str = "") -> str:
+    """Step 16: 5-sentence architectural explanation, grounded in theory and actual market limits."""
     query = f"Architecture blueprint: {json.dumps(blueprint)}"
     if constraints:
         query += f"\nConstraints: {json.dumps(constraints)}"
     if theory_context:
-        query += f"\n\n{theory_context}"
+        query += f"\n\n### SYSTEM DESIGN THEORY CONTEXT ###\n{theory_context}"
+    if market_intel:
+        query += f"\n\n### DISTILLED MARKET INTEL ###\n{market_intel}"
         
-    return await call_gemini(query, EXPLAINER_SYSTEM_PROMPT, use_json=False)
+    return await call_llm_with_retry(query, EXPLAINER_SYSTEM_PROMPT, use_json=False)
+
+
+async def fetch_market_intel_documents(provider: str, service_names: list[str]) -> list:
+    """Fetch raw distilled intelligence documents from MongoDB."""
+    from services.database import market_intel_collection
+    if not provider or not service_names:
+        return []
+    
+    try:
+        # Normalize provider name for regex
+        provider_clean = provider.split('_')[0] # aws, gcp, azure
+        query = {
+            "type": "distilled_intel",
+            "provider": {"$regex": provider_clean, "$options": "i"},
+            "data.service": {"$in": service_names}
+        }
+        cursor = market_intel_collection().find(query)
+        return await cursor.to_list(length=10)
+    except Exception as e:
+        logger.warning(f"Failed to fetch market intel docs: {e}")
+        return []
+
+async def get_relevant_market_intel(provider: str, service_names: list[str]) -> str:
+    """Helper to fetch distilled intelligence from MongoDB for the prompt wrapper."""
+    results = await fetch_market_intel_documents(provider, service_names)
+    if not results:
+        return ""
+    
+    intel_str = ""
+    for res in results:
+        data = res.get("data", {})
+        intel_str += f"\n- {data.get('provider')} {data.get('service')}:\n"
+        intel_str += f"  Free Tier: {data.get('free_tier_details')}\n"
+        intel_str += f"  Limits: {json.dumps(data.get('usage_limits'))}\n"
+        intel_str += f"  Performance: {json.dumps(data.get('performance'))}\n"
+        intel_str += f"  Compliance: {json.dumps(data.get('compliance'))}\n"
+        
+    return intel_str
