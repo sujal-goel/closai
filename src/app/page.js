@@ -281,24 +281,47 @@ export default function LandingPage() {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 28 }}>
           {[
-            { name: 'Kanak Goel', role: 'Chief Architect', img: '/kanak.png', bio: 'Former AWS Principal. Specialist in high-availability distributed systems and agentic pipelines.' },
-            { name: 'Mehul Sharma', role: 'Neural Architect', img: '/mehul.jpg', bio: 'Leading crawler logic for factual policy indexing and real-time documentation synthesis.' },
-            { name: 'Vivek Kumar Sahani', role: 'Strategy Director', img: '/team-3.png', bio: '20+ years scaling cloud infrastructure and pioneering autonomous AI deployment engines.' },
-          ].map(({ name, role, img, bio }) => (
-            <div key={name} style={{ textAlign: 'center', padding: '48px 36px', background: 'rgba(20,24,46,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 24, transition: 'border-color 0.3s, transform 0.3s' }}>
-              <div style={{ width: 88, height: 88, borderRadius: '50%', margin: '0 auto 24px', border: '2px solid rgba(161,250,255,0.25)', boxShadow: '0 0 20px rgba(161,250,255,0.15)', overflow: 'hidden', position: 'relative' }}>
-                <Image src={img} alt={name} fill sizes="88px" priority={false} style={{ objectFit: 'cover' }} />
+            { name: 'Kanak Goel', role: 'Chief Architect', img: '/kanak.png', bio: ' Specialist in high-availability distributed systems and agentic pipelines.' },
+            { name: 'Mehul Sharma', role: 'Frontend Developer', img: '/mehul.jpg', bio: 'Leading frontend designer and expert developer' },
+            { name: 'Shaswat Aggarwal', role: 'Backend Architect', img: '', bio: 'Backend devloper and AI Enthusiast' },
+          ].map(({ name, role, img, bio }, idx) => {
+            const safeName = (name || '').trim() || 'Team Member';
+            const imageSrc = typeof img === 'string' ? img.trim() : '';
+            const hasProfileImage = imageSrc.length > 0;
+
+            return (
+              <div key={`${safeName}-${idx}`} style={{ textAlign: 'center', padding: '48px 36px', background: 'rgba(20,24,46,0.7)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 24, transition: 'border-color 0.3s, transform 0.3s' }}>
+                <div style={{ width: 88, height: 88, borderRadius: '50%', margin: '0 auto 24px', border: '2px solid rgba(161,250,255,0.25)', boxShadow: '0 0 20px rgba(161,250,255,0.15)', overflow: 'hidden', position: 'relative' }}>
+                  {hasProfileImage ? (
+                    <Image src={imageSrc} alt="Team member profile" fill sizes="88px" priority={false} style={{ objectFit: 'cover' }} />
+                  ) : (
+                    (() => {
+                      const initials = safeName
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map(part => part[0].toUpperCase())
+                        .join('') || 'TM';
+
+                      return (
+                    <div aria-label={`${safeName} profile`} style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, rgba(161,250,255,0.2), rgba(184,132,255,0.2))', color: '#e8f7ff', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 28, letterSpacing: '0.02em' }}>
+                      {initials}
+                    </div>
+                      );
+                    })()
+                  )}
+                </div>
+                <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{safeName}</h3>
+                <p style={{ color: '#a1faff', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>{role || 'Team'}</p>
+                <p style={{ color: '#a7aac2', lineHeight: 1.6, fontSize: 14, marginBottom: 24 }}>{bio || 'Profile details coming soon.'}</p>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
+                  {['M', 'L'].map(icon => (
+                    <div key={icon} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 11, color: '#71748b' }}>{icon}</div>
+                  ))}
+                </div>
               </div>
-              <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 800, fontSize: 20, marginBottom: 6 }}>{name}</h3>
-              <p style={{ color: '#a1faff', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 16 }}>{role}</p>
-              <p style={{ color: '#a7aac2', lineHeight: 1.6, fontSize: 14, marginBottom: 24 }}>{bio}</p>
-              <div style={{ display: 'flex', justifyContent: 'center', gap: 16 }}>
-                {['M', 'L'].map(icon => (
-                  <div key={icon} style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 11, color: '#71748b' }}>{icon}</div>
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
