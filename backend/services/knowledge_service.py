@@ -110,6 +110,7 @@ def _build_vectorstore():
 
         embeddings = FastEmbedEmbeddings(
             model_name="BAAI/bge-small-en-v1.5",
+            cache_dir=os.path.join(os.path.dirname(__file__), "..", ".fastembed_cache")
         )
 
         _vectorstore = FAISS.from_documents(chunks, embeddings)

@@ -186,6 +186,10 @@ async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user))
             market_intel=market_intel_data
         )
 
+        # Calculate aggregated deployment plan before persistence so it is
+        # available for metadata writes below.
+        plan = calculate_plan_metrics(market_intel_raw)
+
         # ── Persist to MongoDB ──
         blueprint_id = str(uuid.uuid4())
         if is_connected():
@@ -245,9 +249,6 @@ async def chat(req: ChatRequest, current_user: dict = Depends(get_current_user))
                 },
                 upsert=True,
             )
-
-        # ── Step 11: Calculate Aggregated Metrics for Deployment Plan ──
-        plan = calculate_plan_metrics(market_intel_raw)
 
         return ChatResponse(
             chat_id=chat_id,

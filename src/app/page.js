@@ -282,8 +282,8 @@ export default function LandingPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 28 }}>
           {[
             { name: 'Kanak Goel', role: 'Chief Architect', img: '/kanak.png', bio: ' Specialist in high-availability distributed systems and agentic pipelines.' },
-            { name: 'Mehul Sharma', role: 'Frontend Developer', img: '/mehul.jpg', bio: 'Leading frontend designer and expert developer' },
-            { name: 'Shaswat Aggarwal', role: 'Backend Architect', img: '', bio: 'Backend devloper and AI Enthusiast' },
+            { name: 'Mehul Sharma', role: 'Frontend Designer', img: '/mehul.jpg', bio: 'Leading rag architect and expert developer' },
+            { name: 'Vivek kumar', role: 'Frontend Architect', img: '/vivek.jpeg', bio: 'frontend devloper and AI Enthusiast' },
           ].map(({ name, role, img, bio }, idx) => {
             const safeName = (name || '').trim() || 'Team Member';
             const imageSrc = typeof img === 'string' ? img.trim() : '';
